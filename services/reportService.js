@@ -1,255 +1,298 @@
-// services/reportService.js - EXPORTACIÓN CORREGIDA
-import { Platform } from 'react-native';
+// services/reportService.js - CORREGIDO COMPLETO
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Configuración específica por plataforma
-const getApiConfig = () => {
-  console.log('🔧 Configuring for platform:', Platform.OS);
-  
-  if (Platform.OS === 'android') {
-    return {
-      baseUrl: 'http://192.168.1.13:3000',
-      timeout: 10000
-    };
-  } else if (Platform.OS === 'ios') {
-    return {
-      baseUrl: 'http://localhost:3000',
-      timeout: 10000
-    };
-  } else {
-    return {
-      baseUrl: 'http://localhost:3000',
-      timeout: 10000
-    };
+const BASE_URL = 'http://192.168.1.13:3000'; // Tu IP del servidor
+
+class ReportService {
+  constructor() {
+    this.baseUrl = BASE_URL;
   }
-};
 
-// ✅ FUNCIÓN CREAR REPORTE - EXPORTABLE
-const createReport = async (reportData) => {
-  try {
-    console.log('\n📝 ===== CREATING REPORT =====');
-    console.log('📊 Data:', {
-      title: reportData.title,
-      description: reportData.description,
-      ubicacion: reportData.ubicacion,
-      categoria: reportData.categoria,
-      hasImage: reportData.hasImage
-    });
+  // ✅ FUNCIÓN GETREPORTS - LA QUE FALTABA
+  async getReports() {
+    try {
+      console.log('📡 Fetching reports from server...');
+      console.log('🔗 URL:', `${this.baseUrl}/api/reports`);
 
-    const { baseUrl, timeout } = getApiConfig();
-    console.log('🌐 Using base URL:', baseUrl);
+      const response = await fetch(`${this.baseUrl}/api/reports`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000, // 10 segundos
+      });
 
-    // Determinar endpoint basado en si tiene imagen
-    const endpoint = reportData.hasImage ? '/api/reports' : '/api/reports/simple';
-    const fullUrl = `${baseUrl}${endpoint}`;
-    
-    console.log('🎯 Endpoint:', endpoint);
-    console.log('🔗 Full URL:', fullUrl);
+      console.log('📡 Response status:', response.status);
 
-    let requestConfig;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    if (reportData.hasImage && reportData.imageUri) {
-      // FormData para reportes con imagen
-      console.log('📷 Processing image...');
+      const data = await response.json();
+      console.log('✅ Reports fetched successfully:', data.count || 0, 'reports');
+
+      // Retornar los reportes en el formato esperado
+      return {
+        success: true,
+        reports: data.reports || [],
+        count: data.count || 0
+      };
+
+    } catch (error) {
+      console.error('❌ Error fetching reports:', error);
       
+      // Retornar datos de respaldo en caso de error
+      return {
+        success: false,
+        error: error.message,
+        reports: [
+          {
+            id: 'offline-1',
+            title: 'Sin conexión al servidor',
+            description: 'No se pudieron cargar los reportes desde el servidor.',
+            status: 'Error',
+            date: new Date().toISOString(),
+            location: 'Local',
+            category: 'Sistema',
+            hasImage: false
+          }
+        ],
+        count: 1
+      };
+    }
+  }
+
+  // ✅ CREAR NUEVO REPORTE
+  async createReport(reportData) {
+    try {
+      console.log('📝 Creating new report...');
+      console.log('🔗 URL:', `${this.baseUrl}/api/reports`);
+
+      // Crear FormData para enviar imagen si existe
       const formData = new FormData();
       formData.append('title', reportData.title);
       formData.append('description', reportData.description);
-      formData.append('ubicacion', reportData.ubicacion);
-      formData.append('categoria', reportData.categoria);
-      
-      // Agregar imagen
-      const imageUri = reportData.imageUri;
-      const filename = `image_${Date.now()}.jpg`;
-      
-      formData.append('image', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: filename,
-      });
+      formData.append('ubicacion', reportData.ubicacion || 'San Salvador, El Salvador');
+      formData.append('categoria', reportData.categoria || 'general');
 
-      requestConfig = {
+      // Agregar imagen si existe
+      if (reportData.image) {
+        formData.append('image', {
+          uri: reportData.image.uri,
+          type: reportData.image.type || 'image/jpeg',
+          name: reportData.image.fileName || 'report-image.jpg',
+        });
+      }
+
+      const response = await fetch(`${this.baseUrl}/api/reports`, {
         method: 'POST',
+        body: formData,
         headers: {
           'Content-Type': 'multipart/form-data',
-          'Accept': 'application/json'
         },
-        body: formData
-      };
-      
-      console.log('📤 Sending FormData with image');
-    } else {
-      // JSON para reportes sin imagen
-      console.log('📝 Sending JSON data (no image)');
-      
-      requestConfig = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          title: reportData.title,
-          description: reportData.description,
-          ubicacion: reportData.ubicacion,
-          categoria: reportData.categoria
-        })
-      };
-    }
+        timeout: 15000, // 15 segundos para subir imágenes
+      });
 
-    console.log('🚀 Sending request...');
-    
-    // Crear timeout Promise
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Request timeout')), timeout)
-    );
+      console.log('📡 Create response status:', response.status);
 
-    // Enviar request con timeout
-    const response = await Promise.race([
-      fetch(fullUrl, requestConfig),
-      timeoutPromise
-    ]);
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorData}`);
+      }
 
-    console.log('📡 Response status:', response.status);
+      const data = await response.json();
+      console.log('✅ Report created successfully:', data.report?.id);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Response error:', errorText);
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log('✅ Response data:', result);
-
-    if (result.success) {
-      console.log('🎉 Report created successfully!');
       return {
         success: true,
-        report: result.report,
-        message: result.message || 'Report created successfully'
+        report: data.report,
+        message: data.message
       };
-    } else {
-      console.error('❌ Server returned error:', result.error);
+
+    } catch (error) {
+      console.error('❌ Error creating report:', error);
       return {
         success: false,
-        error: result.error || 'Unknown server error'
+        error: error.message
       };
     }
-
-  } catch (error) {
-    console.error('❌ CREATE REPORT ERROR:', error);
-    
-    // Fallback: modo offline
-    console.log('💾 Switching to offline mode...');
-    
-    return {
-      success: true,
-      report: {
-        id: Date.now(),
-        title: reportData.title,
-        description: reportData.description,
-        ubicacion: reportData.ubicacion,
-        categoria: reportData.categoria,
-        hasImage: reportData.hasImage,
-        date: new Date().toISOString(),
-        offline: true
-      },
-      message: 'Report saved locally (offline mode)',
-      offline: true
-    };
   }
-};
 
-// ✅ FUNCIÓN OBTENER REPORTES - EXPORTABLE
-const getAllReports = async () => {
-  try {
-    console.log('\n📋 ===== FETCHING ALL REPORTS =====');
-    
-    const { baseUrl, timeout } = getApiConfig();
-    const fullUrl = `${baseUrl}/api/reports`;
-    
-    console.log('🔗 Fetching from:', fullUrl);
+  // ✅ OBTENER REPORTE POR ID
+  async getReportById(id) {
+    try {
+      console.log('📄 Fetching report by ID:', id);
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Request timeout')), timeout)
-    );
-
-    const response = await Promise.race([
-      fetch(fullUrl, {
+      const response = await fetch(`${this.baseUrl}/api/reports/${id}`, {
         method: 'GET',
         headers: {
-          'Accept': 'application/json'
-        }
-      }),
-      timeoutPromise
-    ]);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const result = await response.json();
-    console.log('✅ Fetched reports:', result.reports?.length || 0);
-
-    return {
-      success: true,
-      reports: result.reports || [],
-      total: result.total || result.reports?.length || 0
-    };
-
-  } catch (error) {
-    console.error('❌ GET REPORTS ERROR:', error.message);
-    
-    // Datos de ejemplo para modo offline
-    return {
-      success: true,
-      reports: [
-        {
-          id: 1,
-          title: 'Sample Report 1',
-          description: 'This is a sample report',
-          ubicacion: 'San Salvador',
-          categoria: 'general',
-          date: new Date().toISOString(),
-          offline: true
+          'Content-Type': 'application/json',
         },
-        {
-          id: 2,
-          title: 'Sample Report 2', 
-          description: 'Another sample report',
-          ubicacion: 'San Salvador',
-          categoria: 'infrastructure',
-          date: new Date().toISOString(),
-          offline: true
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Report fetched by ID successfully');
+
+      return {
+        success: true,
+        report: data.report
+      };
+
+    } catch (error) {
+      console.error('❌ Error fetching report by ID:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ✅ ACTUALIZAR REPORTE
+  async updateReport(id, updates) {
+    try {
+      console.log('🔄 Updating report:', id);
+
+      const response = await fetch(`${this.baseUrl}/api/reports/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Report updated successfully');
+
+      return {
+        success: true,
+        report: data.report,
+        message: data.message
+      };
+
+    } catch (error) {
+      console.error('❌ Error updating report:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ✅ ELIMINAR REPORTE
+  async deleteReport(id) {
+    try {
+      console.log('🗑️ Deleting report:', id);
+
+      const response = await fetch(`${this.baseUrl}/api/reports/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Report deleted successfully');
+
+      return {
+        success: true,
+        message: data.message
+      };
+
+    } catch (error) {
+      console.error('❌ Error deleting report:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ✅ OBTENER ESTADÍSTICAS
+  async getStats() {
+    try {
+      console.log('📊 Fetching report statistics...');
+
+      const response = await fetch(`${this.baseUrl}/api/reports/stats`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Stats fetched successfully');
+
+      return {
+        success: true,
+        stats: data.stats
+      };
+
+    } catch (error) {
+      console.error('❌ Error fetching stats:', error);
+      return {
+        success: false,
+        error: error.message,
+        stats: {
+          total: 0,
+          pending: 0,
+          inProgress: 0,
+          resolved: 0,
+          resolutionRate: 0,
+          recentCount: 0
         }
-      ],
-      total: 2,
-      fromCache: true,
-      message: 'Data loaded from cache (offline mode)'
-    };
+      };
+    }
   }
-};
 
-// ✅ OBJETO PRINCIPAL DEL SERVICIO
-const reportService = {
-  createReport,
-  getAllReports,
-  
-  // Métodos adicionales si los necesitas
-  getReportById: async (id) => {
-    console.log('📄 Getting report by ID:', id);
-    // Implementar si necesitas
-    return { success: false, error: 'Not implemented yet' };
-  },
-  
-  deleteReport: async (id) => {
-    console.log('🗑️ Deleting report:', id);
-    // Implementar si necesitas
-    return { success: false, error: 'Not implemented yet' };
+  // ✅ FUNCIÓN DE TEST DE CONEXIÓN
+  async testConnection() {
+    try {
+      console.log('🔍 Testing report service connection...');
+
+      const response = await fetch(`${this.baseUrl}/api/test`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 5000,
+      });
+
+      const data = await response.json();
+      console.log('✅ Report service connection test successful');
+
+      return {
+        success: true,
+        message: 'Connection successful',
+        serverInfo: data
+      };
+
+    } catch (error) {
+      console.error('❌ Report service connection test failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
-};
+}
 
-// ✅ EXPORTACIÓN CORRECTA - ESTO ES LO IMPORTANTE
+// ✅ EXPORTAR INSTANCIA SINGLETON
+const reportService = new ReportService();
+
 export default reportService;
-
-// ✅ EXPORTACIONES NOMBRADAS ADICIONALES (por si las necesitas)
-export { createReport, getAllReports };

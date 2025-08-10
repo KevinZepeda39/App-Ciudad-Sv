@@ -1,4 +1,4 @@
-// components/reports/ReportListScreen.js - Para ver reportes que se crean
+// components/reports/ReportListScreen.js - CORREGIDO
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -15,7 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
-import { reportService } from '../../services/reportService';
+import reportService from '../../services/reportService'; // ✅ CORREGIDO: Sin llaves
 
 // Helper para formatear cualquier valor de forma segura
 const formatSafeValue = (value) => {
@@ -111,6 +111,12 @@ const ReportListScreen = ({ navigation }) => {
       setError(null);
 
       console.log('📡 Fetching reports from server...');
+      
+      // ✅ VERIFICAR QUE REPORTSERVICE EXISTE
+      if (!reportService || !reportService.getReports) {
+        throw new Error('ReportService no está disponible');
+      }
+
       const response = await reportService.getReports(isRefresh);
       
       console.log('📊 Server response:', {
@@ -364,7 +370,7 @@ const ReportListScreen = ({ navigation }) => {
       {/* Banner de error si hay */}
       {error && (
         <View style={styles.errorBanner}>
-          <Ionicons name="wifi-off" size={16} color="#fff" />
+          <Ionicons name="wifi-outline" size={16} color="#fff" />
           <Text style={styles.errorBannerText}>
             Error de conexión - Mostrando datos guardados
           </Text>
