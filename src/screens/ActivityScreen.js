@@ -1,4 +1,4 @@
-// src/screens/ActivityScreen.js - Versión conectada a MySQL
+// src/screens/ActivityScreen.js - CORREGIDO ver git hub comprobación
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { reportService } from '../../services/reportService';
+import reportService from '../../services/reportService'; // ✅ CORREGIDO: Sin llaves
 
 // Definición de colores mejorados
 const colors = {
@@ -58,6 +58,11 @@ const ActivityScreen = ({ navigation }) => {
       setLoading(true);
       console.log('📋 Cargando reportes del usuario desde MySQL...');
       
+      // ✅ VERIFICAR QUE REPORTSERVICE EXISTE
+      if (!reportService || !reportService.getReports) {
+        throw new Error('ReportService no está disponible');
+      }
+      
       const response = await reportService.getReports();
       
       if (response.success) {
@@ -70,7 +75,8 @@ const ActivityScreen = ({ navigation }) => {
           viewCount: Math.floor(Math.random() * 10) + 1,
           status: report.status || 'Pendiente',
           category: report.category || 'General',
-          createdAt: report.createdAt || new Date().toISOString()
+          createdAt: report.createdAt || new Date().toISOString(),
+          isOwn: true // Por ahora, marcar todos como propios para permitir edición
         }));
         
         setReports(userReports);
@@ -85,7 +91,7 @@ const ActivityScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('❌ Error cargando reportes:', error);
-      Alert.alert('Error', 'Problema de conexión al cargar reportes');
+      Alert.alert('Error', `Problema de conexión al cargar reportes: ${error.message}`);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -121,9 +127,14 @@ const ActivityScreen = ({ navigation }) => {
       setUpdating(true);
       console.log(`🔄 Actualizando reporte ${selectedReport.id} en MySQL...`);
       
+      // ✅ VERIFICAR QUE REPORTSERVICE TIENE LA FUNCIÓN
+      if (!reportService || !reportService.updateReport) {
+        throw new Error('Función updateReport no disponible');
+      }
+      
       const response = await reportService.updateReport(selectedReport.id, {
-        title: editedTitle.trim(),
-        description: editedDescription.trim()
+        titulo: editedTitle.trim(), // Usar 'titulo' según tu base de datos
+        descripcion: editedDescription.trim() // Usar 'descripcion' según tu base de datos
       });
       
       if (response.success) {
@@ -139,11 +150,11 @@ const ActivityScreen = ({ navigation }) => {
         Alert.alert('Éxito', 'Reporte actualizado correctamente');
         setModalVisible(false);
       } else {
-        Alert.alert('Error', response.message || 'Error al actualizar el reporte');
+        Alert.alert('Error', response.error || 'Error al actualizar el reporte');
       }
     } catch (error) {
       console.error('❌ Error actualizando reporte:', error);
-      Alert.alert('Error', 'Problema de conexión al actualizar');
+      Alert.alert('Error', `Problema de conexión al actualizar: ${error.message}`);
     } finally {
       setUpdating(false);
     }
@@ -168,6 +179,11 @@ const ActivityScreen = ({ navigation }) => {
             try {
               console.log(`🗑️ Eliminando reporte ${report.id} de MySQL...`);
               
+              // ✅ VERIFICAR QUE REPORTSERVICE TIENE LA FUNCIÓN
+              if (!reportService || !reportService.deleteReport) {
+                throw new Error('Función deleteReport no disponible');
+              }
+              
               const response = await reportService.deleteReport(report.id);
               
               if (response.success) {
@@ -178,11 +194,11 @@ const ActivityScreen = ({ navigation }) => {
                 console.log('✅ Reporte eliminado exitosamente de MySQL');
                 Alert.alert('Éxito', 'Reporte eliminado correctamente');
               } else {
-                Alert.alert('Error', response.message || 'Error al eliminar el reporte');
+                Alert.alert('Error', response.error || 'Error al eliminar el reporte');
               }
             } catch (error) {
               console.error('❌ Error eliminando reporte:', error);
-              Alert.alert('Error', 'Problema de conexión al eliminar');
+              Alert.alert('Error', `Problema de conexión al eliminar: ${error.message}`);
             }
           }
         }
@@ -193,7 +209,10 @@ const ActivityScreen = ({ navigation }) => {
   // Marcar reporte como visto
   const markAsViewed = (reportId) => {
     setViewedReports(prev => new Set([...prev, reportId]));
-    reportService.markAsViewed(reportId);
+    // Solo marcar si la función existe
+    if (reportService && reportService.markAsViewed) {
+      reportService.markAsViewed(reportId);
+    }
   };
 
   // Obtener icono según el tipo de actividad
@@ -219,20 +238,27 @@ const ActivityScreen = ({ navigation }) => {
   const formatDate = (dateString) => {
     if (!dateString) return 'Sin fecha';
     
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Hoy';
-    if (diffDays === 1) return 'Ayer';
-    if (diffDays < 7) return `Hace ${diffDays} días`;
-    
-    return date.toLocaleDateString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Sin fecha';
+      
+      const now = new Date();
+      const diffMs = now - date;
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return 'Hoy';
+      if (diffDays === 1) return 'Ayer';
+      if (diffDays < 7) return `Hace ${diffDays} días`;
+      
+      return date.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch (error) {
+      console.log('Error formatting date:', dateString, error);
+      return 'Sin fecha';
+    }
   };
 
   const renderReportItem = ({ item }) => {
